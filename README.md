@@ -1,4 +1,4 @@
-# Magnit
+# Magnet
 
 Language: English | [Russian](docs/README.ru.md)
 
