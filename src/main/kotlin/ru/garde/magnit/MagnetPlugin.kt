@@ -8,15 +8,21 @@ import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.command.Command
 import org.bukkit.command.CommandSender
+import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Item
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.java.JavaPlugin
+import java.util.Locale
 
 object MagnetPlugin : JavaPlugin() {
 
+    private const val DEFAULT_LANGUAGE = "en"
+
     private lateinit var magnetKey: NamespacedKey
+    private val supportedLanguages = setOf(DEFAULT_LANGUAGE, "ru")
+    private val messages = mutableMapOf<String, YamlConfiguration>()
 
     private val ferromagneticMaterials = setOf(
         Material.IRON_INGOT,
@@ -101,9 +107,19 @@ object MagnetPlugin : JavaPlugin() {
     override fun onEnable() {
         magnetKey = NamespacedKey(this, "magnet")
 
+        loadMessages()
         startMagnetTask()
 
         logger.info("MagnetPlugin enabled")
+    }
+
+    private fun loadMessages() {
+        for (language in supportedLanguages) {
+            saveResource("lang/$language.yml", false)
+            messages[language] = YamlConfiguration.loadConfiguration(
+                dataFolder.resolve("lang/$language.yml")
+            )
+        }
     }
 
     private fun startMagnetTask() {
@@ -164,25 +180,22 @@ object MagnetPlugin : JavaPlugin() {
         )
     }
 
-    private fun createMagnet(): ItemStack {
+    private fun createMagnet(language: String): ItemStack {
         val item = ItemStack(Material.AMETHYST_SHARD)
         val meta = item.itemMeta
 
         meta.displayName(
-            Component.text("Магнит")
+            Component.text(message(language, "item.name"))
                 .color(NamedTextColor.AQUA)
                 .decoration(TextDecoration.ITALIC, false)
         )
 
         meta.lore(
-            listOf(
-                Component.text("Притягивает железо и похожие материалы")
-                    .color(NamedTextColor.GRAY)
-                    .decoration(TextDecoration.ITALIC, false),
-                Component.text("Незерит притягивается слабее")
-                    .color(NamedTextColor.DARK_GRAY)
+            messageList(language, "item.lore").mapIndexed { index, line ->
+                Component.text(line)
+                    .color(if (index == 0) NamedTextColor.GRAY else NamedTextColor.DARK_GRAY)
                     .decoration(TextDecoration.ITALIC, false)
-            )
+            }
         )
 
         meta.persistentDataContainer.set(
@@ -193,6 +206,25 @@ object MagnetPlugin : JavaPlugin() {
 
         item.itemMeta = meta
         return item
+    }
+
+    private fun languageFor(player: Player): String {
+        val language = player.locale().language.lowercase(Locale.ROOT)
+        return if (language in supportedLanguages) language else DEFAULT_LANGUAGE
+    }
+
+    private fun message(language: String, path: String): String {
+        return messages[language]?.getString(path)
+            ?: messages[DEFAULT_LANGUAGE]?.getString(path)
+            ?: path
+    }
+
+    private fun messageList(language: String, path: String): List<String> {
+        val localized = messages[language]?.getStringList(path).orEmpty()
+        if (localized.isNotEmpty()) return localized
+
+        val fallback = messages[DEFAULT_LANGUAGE]?.getStringList(path).orEmpty()
+        return fallback.ifEmpty { listOf(path) }
     }
 
     override fun onCommand(
@@ -206,14 +238,16 @@ object MagnetPlugin : JavaPlugin() {
         }
 
         if (sender !is Player) {
-            sender.sendMessage("Эту команду может использовать только игрок.")
+            sender.sendMessage(message(DEFAULT_LANGUAGE, "command.player-only"))
             return true
         }
 
-        sender.inventory.addItem(createMagnet())
+        val language = languageFor(sender)
+
+        sender.inventory.addItem(createMagnet(language))
 
         sender.sendMessage(
-            Component.text("Ты получил магнит.")
+            Component.text(message(language, "command.received"))
                 .color(NamedTextColor.GREEN)
         )
 
