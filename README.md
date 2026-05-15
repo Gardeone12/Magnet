@@ -68,13 +68,13 @@ If Gradle Wrapper files are available:
 The compiled plugin jar is generated in:
 
 ```text
-build/libs/
+build/libs/Magnit-0.1.0.jar
 ```
 
 ## Installation
 
 1. Build the plugin.
-2. Copy the generated `.jar` from `build/libs/` to the Paper server `plugins` folder.
+2. Copy `build/libs/Magnit-0.1.0.jar` to the Paper server `plugins` folder.
 3. Start or restart the server.
 4. Run `/magnet` in game.
 
@@ -95,7 +95,7 @@ If Gradle Wrapper files are available:
 ## Project Structure
 
 ```text
-src/main/kotlin/ru/garde/magnit/
+src/main/kotlin/ru/garde/magnet/
   MagnetPlugin.kt
   MagnetPluginBootsTrap.kt
 

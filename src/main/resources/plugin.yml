@@ -1,5 +1,5 @@
 name: MagnetPlugin
-version: 1.0.0
+version: ${version}
 
 main: ru.garde.magnet.MagnetPlugin
 bootstrapper: ru.garde.magnet.MagnetPluginBootsTrap
@@ -8,5 +8,6 @@ author: Garde1
 
 commands:
   magnet:
-    description: Gives magnet item
+    description: Gives magnet item and manages magnetic cores
     usage: /magnet
+    aliases: [magnit]

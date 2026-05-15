@@ -62,13 +62,13 @@ gradle build
 Готовый `.jar` появится в папке:
 
 ```text
-build/libs/
+build/libs/Magnit-0.1.0.jar
 ```
 
 ## Установка
 
 1. Соберите плагин.
-2. Скопируйте `.jar` из `build/libs/` в папку `plugins` Paper-сервера.
+2. Скопируйте `build/libs/Magnit-0.1.0.jar` в папку `plugins` Paper-сервера.
 3. Запустите или перезапустите сервер.
 4. В игре выполните команду `/magnet`.
 
@@ -89,7 +89,7 @@ gradle runServer
 ## Структура проекта
 
 ```text
-src/main/kotlin/ru/garde/magnit/
+src/main/kotlin/ru/garde/magnet/
   MagnetPlugin.kt
   MagnetPluginBootsTrap.kt
 

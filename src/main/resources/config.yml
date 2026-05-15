@@ -1,0 +1,7 @@
+settings:
+  core-task-period-ticks: 2
+  default-core-radius: 16.0
+  default-core-strength: 0.28
+  max-core-radius: 64.0
+
+magnet-cores: {}
