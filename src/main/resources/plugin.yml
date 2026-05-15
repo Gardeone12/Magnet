@@ -1,0 +1,12 @@
+name: MagnetPlugin
+version: 1.0.0
+
+main: ru.garde.magnet.MagnetPlugin
+bootstrapper: ru.garde.magnet.MagnetPluginBootsTrap
+api-version: '1.21'
+author: Garde1
+
+commands:
+  magnet:
+    description: Gives magnet item
+    usage: /magnet
