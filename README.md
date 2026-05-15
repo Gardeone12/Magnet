@@ -33,13 +33,6 @@ English is the default language. Russian is available as an additional localizat
 
 The plugin selects the message language from the player's client locale. Unsupported locales fall back to English.
 
-Localization files:
-
-```text
-src/main/resources/lang/en.yml
-src/main/resources/lang/ru.yml
-```
-
 ## How It Works
 
 Every 2 ticks, the plugin checks online players. If a player is holding a magnet, the plugin searches for dropped items within a 7-block radius and applies velocity toward the player to supported materials.
