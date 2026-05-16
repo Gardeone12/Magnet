@@ -106,6 +106,3 @@ src/main/resources/
     ru.yml
 ```
 
-## Usage Notice
-
-This is an open-source project with project-specific limitations. Check the repository license and distribution terms before redistributing modified builds.
