@@ -1,7 +1,190 @@
 settings:
-  core-task-period-ticks: 2
+  core-task-period-ticks: 0.1
   default-core-radius: 16.0
   default-core-strength: 0.28
   max-core-radius: 64.0
+  min-core-strength: 0.05
+  max-core-strength: 2.0
+  frame-scan-radius-x: 12
+  frame-scan-radius-y-down: 8
+  frame-scan-radius-y-up: 8
+  frame-scan-radius-z: 12
+  max-frame-blocks: 4096
+  frame-corner-padding: 1
+  ignore-frame-corners: true
 
-magnet-cores: {}
+frame-materials:
+  - STONE_BRICKS
+  - CRACKED_STONE_BRICKS
+  - CHISELED_STONE_BRICKS
+  - POLISHED_ANDESITE
+  - POLISHED_ANDESITE_STAIRS
+  - POLISHED_ANDESITE_SLAB
+  - DEEPSLATE_BRICKS
+  - DEEPSLATE_TILES
+  - POLISHED_DEEPSLATE
+  - BLACK_CONCRETE
+  - BLACKSTONE
+  - POLISHED_BLACKSTONE
+  - IRON_BLOCK
+  - COPPER_BLOCK
+  - CUT_COPPER
+  - WAXED_CUT_COPPER
+  - LIGHTNING_ROD
+
+core-materials:
+  COPPER_BLOCK:
+    profile: copper
+    base-radius: 16.0
+    base-strength: 0.28
+    priority: 10
+  EXPOSED_COPPER:
+    profile: copper
+    base-radius: 15.0
+    base-strength: 0.26
+    priority: 10
+  WEATHERED_COPPER:
+    profile: copper
+    base-radius: 14.0
+    base-strength: 0.24
+    priority: 10
+  OXIDIZED_COPPER:
+    profile: copper
+    base-radius: 13.0
+    base-strength: 0.22
+    priority: 10
+  WAXED_COPPER_BLOCK:
+    profile: copper
+    base-radius: 16.0
+    base-strength: 0.28
+    priority: 10
+  WAXED_EXPOSED_COPPER:
+    profile: copper
+    base-radius: 15.0
+    base-strength: 0.26
+    priority: 10
+  WAXED_WEATHERED_COPPER:
+    profile: copper
+    base-radius: 14.0
+    base-strength: 0.24
+    priority: 10
+  WAXED_OXIDIZED_COPPER:
+    profile: copper
+    base-radius: 13.0
+    base-strength: 0.22
+    priority: 10
+  RAW_COPPER_BLOCK:
+    profile: raw_copper
+    base-radius: 18.0
+    base-strength: 0.30
+    priority: 12
+  CUT_COPPER:
+    profile: tuned_copper
+    base-radius: 17.0
+    base-strength: 0.29
+    priority: 12
+  WAXED_CUT_COPPER:
+    profile: tuned_copper
+    base-radius: 17.0
+    base-strength: 0.29
+    priority: 12
+  IRON_BLOCK:
+    profile: iron
+    base-radius: 20.0
+    base-strength: 0.36
+    priority: 20
+  RAW_IRON_BLOCK:
+    profile: raw_iron
+    base-radius: 21.0
+    base-strength: 0.38
+    priority: 22
+  ANVIL:
+    profile: dense_iron
+    base-radius: 18.0
+    base-strength: 0.42
+    priority: 23
+  CHIPPED_ANVIL:
+    profile: dense_iron
+    base-radius: 17.0
+    base-strength: 0.38
+    priority: 22
+  DAMAGED_ANVIL:
+    profile: dense_iron
+    base-radius: 16.0
+    base-strength: 0.34
+    priority: 21
+  GOLD_BLOCK:
+    profile: gold
+    base-radius: 24.0
+    base-strength: 0.24
+    priority: 18
+  RAW_GOLD_BLOCK:
+    profile: raw_gold
+    base-radius: 25.0
+    base-strength: 0.25
+    priority: 19
+  REDSTONE_BLOCK:
+    profile: redstone
+    base-radius: 26.0
+    base-strength: 0.32
+    priority: 25
+  LAPIS_BLOCK:
+    profile: lapis
+    base-radius: 22.0
+    base-strength: 0.30
+    priority: 16
+  DIAMOND_BLOCK:
+    profile: diamond
+    base-radius: 28.0
+    base-strength: 0.44
+    priority: 35
+  EMERALD_BLOCK:
+    profile: emerald
+    base-radius: 27.0
+    base-strength: 0.40
+    priority: 34
+  AMETHYST_BLOCK:
+    profile: amethyst
+    base-radius: 30.0
+    base-strength: 0.34
+    priority: 30
+  PRISMARINE:
+    profile: prismarine
+    base-radius: 23.0
+    base-strength: 0.31
+    priority: 17
+  DARK_PRISMARINE:
+    profile: dark_prismarine
+    base-radius: 25.0
+    base-strength: 0.35
+    priority: 20
+  OBSIDIAN:
+    profile: obsidian
+    base-radius: 18.0
+    base-strength: 0.50
+    priority: 32
+  CRYING_OBSIDIAN:
+    profile: unstable_obsidian
+    base-radius: 24.0
+    base-strength: 0.52
+    priority: 33
+  NETHERITE_BLOCK:
+    profile: netherite
+    base-radius: 32.0
+    base-strength: 0.60
+    priority: 50
+  LODESTONE:
+    profile: lodestone
+    base-radius: 34.0
+    base-strength: 0.64
+    priority: 55
+  BEACON:
+    profile: beacon
+    base-radius: 36.0
+    base-strength: 0.58
+    priority: 52
+  RESPAWN_ANCHOR:
+    profile: unstable_anchor
+    base-radius: 38.0
+    base-strength: 0.62
+    priority: 53

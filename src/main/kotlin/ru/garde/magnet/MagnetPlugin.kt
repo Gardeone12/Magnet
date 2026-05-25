@@ -1,5 +1,7 @@
 package ru.garde.magnet
 
+import io.papermc.paper.command.brigadier.BasicCommand
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
@@ -16,11 +18,9 @@ import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.java.JavaPlugin
 import java.util.Locale
 
-class MagnetPlugin : JavaPlugin() {
-    companion object {
-        private const val DEFAULT_LANGUAGE = "en"
-        private val coreIdPattern = Regex("[a-z0-9_-]{1,32}")
-    }
+object MagnetPlugin : JavaPlugin() {
+    private const val DEFAULT_LANGUAGE = "en"
+    private val coreIdPattern = Regex("[a-z0-9_-]{1,32}")
 
     private lateinit var magnetKey: NamespacedKey
     private lateinit var coreManager: MagnetCoreManager
@@ -109,6 +109,8 @@ class MagnetPlugin : JavaPlugin() {
     )
 
     override fun onEnable() {
+        registerCommands()
+
         magnetKey = NamespacedKey(this, "magnet")
 
         saveDefaultConfig()
@@ -119,6 +121,7 @@ class MagnetPlugin : JavaPlugin() {
 
         coreManager = MagnetCoreManager(this, ::getMagneticMultiplier)
         coreManager.load()
+        server.pluginManager.registerEvents(MagnetStructureBreakListener(this, coreManager), this)
 
         startPortableMagnetTask()
         coreManager.start()
@@ -129,6 +132,19 @@ class MagnetPlugin : JavaPlugin() {
     override fun onDisable() {
         if (::coreManager.isInitialized) {
             coreManager.shutdown()
+        }
+    }
+
+    private fun registerCommands() {
+        lifecycleManager.registerEventHandler(LifecycleEvents.COMMANDS) { event ->
+            event.registrar().register(
+                "magnet",
+                "Gives magnet item and manages magnetic cores",
+                listOf("magnit"),
+                BasicCommand { source, args ->
+                    handleMagnetCommand(source.sender, args)
+                }
+            )
         }
     }
 
@@ -237,6 +253,10 @@ class MagnetPlugin : JavaPlugin() {
             return false
         }
 
+        return handleMagnetCommand(sender, args)
+    }
+
+    private fun handleMagnetCommand(sender: CommandSender, args: Array<out String>): Boolean {
         if (args.isEmpty() || args[0].equals("help", ignoreCase = true)) {
             sendHelp(sender)
             return true
@@ -245,6 +265,7 @@ class MagnetPlugin : JavaPlugin() {
         return when (args[0].lowercase(Locale.ROOT)) {
             "give" -> handleGive(sender)
             "core" -> handleCore(sender, args)
+            "profile" -> handleProfile(sender, args)
             else -> {
                 send(sender, "command.unknown", NamedTextColor.RED)
                 sendHelp(sender)
@@ -274,9 +295,26 @@ class MagnetPlugin : JavaPlugin() {
             "remove", "delete" -> handleCoreRemove(sender, args)
             "list" -> handleCoreList(sender)
             "info", "check" -> handleCoreInfo(sender, args)
+            "rescan" -> handleCoreRescan(sender, args)
+            "refresh" -> handleCoreRefresh(sender, args)
+            "override" -> handleCoreOverride(sender, args)
+            "set" -> handleCoreSet(sender, args)
             "reload" -> handleCoreReload(sender)
             else -> {
                 send(sender, "command.core-usage", NamedTextColor.YELLOW)
+                true
+            }
+        }
+    }
+
+    private fun handleProfile(sender: CommandSender, args: Array<out String>): Boolean {
+        return when (args.getOrNull(1)?.lowercase(Locale.ROOT)) {
+            "list" -> handleProfileList(sender)
+            "info" -> handleProfileInfo(sender, args)
+            "set" -> handleProfileSet(sender, args)
+            "reload" -> handleProfileReload(sender)
+            else -> {
+                send(sender, "command.profile-usage", NamedTextColor.YELLOW)
                 true
             }
         }
@@ -305,14 +343,19 @@ class MagnetPlugin : JavaPlugin() {
         }
 
         val targetBlock = sender.getTargetBlockExact(10)
-        if (targetBlock == null || !MagnetCoreManager.isCopperCoreMaterial(targetBlock.type)) {
-            send(sender, "command.core-need-copper", NamedTextColor.RED)
+        if (targetBlock == null || !coreManager.isCoreMaterial(targetBlock.type)) {
+            send(sender, "command.core-need-material", NamedTextColor.RED)
             return true
         }
 
-        val radius = parseRadius(sender, args.getOrNull(3)) ?: return true
-        val strength = parseStrength(sender, args.getOrNull(4)) ?: return true
-        val core = coreManager.create(id, targetBlock, radius, strength)
+        val radiusOverride = args.getOrNull(3)?.let { parseRadius(sender, it) ?: return true }
+        val strengthOverride = args.getOrNull(4)?.let { parseStrength(sender, it) ?: return true }
+        val result = coreManager.create(id, targetBlock, radiusOverride, strengthOverride)
+        if (result == null) {
+            send(sender, "command.core-2x2x2-not-found", NamedTextColor.RED)
+            return true
+        }
+        val core = result.core
 
         send(
             sender,
@@ -320,12 +363,19 @@ class MagnetPlugin : JavaPlugin() {
             NamedTextColor.GREEN,
             "id" to core.id,
             "world" to core.worldName,
-            "x" to core.x.toString(),
-            "y" to core.y.toString(),
-            "z" to core.z.toString(),
+            "x" to formatDouble(core.centerX),
+            "y" to formatDouble(core.centerY),
+            "z" to formatDouble(core.centerZ),
             "radius" to formatDouble(core.radius),
-            "strength" to formatDouble(core.strength)
+            "strength" to formatDouble(core.strength),
+            "profile" to core.coreProfile,
+            "calculatedRadius" to formatDouble(core.calculatedRadius),
+            "calculatedStrength" to formatDouble(core.calculatedStrength),
+            "override" to core.manualOverride.toString(),
+            "critical" to core.criticalFrameBlocks.size.toString(),
+            "optional" to core.optionalFrameBlocks.size.toString()
         )
+        sendFrameWarning(sender, result.frameWarning)
 
         return true
     }
@@ -355,25 +405,30 @@ class MagnetPlugin : JavaPlugin() {
         }
 
         val block = world.getBlockAt(parsed.x, parsed.y, parsed.z)
-        if (!MagnetCoreManager.isCopperCoreMaterial(block.type)) {
+        if (!coreManager.isCoreMaterial(block.type)) {
             send(
                 sender,
-                "command.core-createat-not-copper",
+                "command.core-createat-not-material",
                 NamedTextColor.RED,
                 "material" to block.type.name
             )
             return true
         }
 
-        val core = coreManager.createAt(
+        val result = coreManager.createAt(
             id = id,
             worldName = world.name,
             x = parsed.x,
             y = parsed.y,
             z = parsed.z,
-            radius = parsed.radius,
-            strength = parsed.strength
+            radiusOverride = parsed.radiusOverride,
+            strengthOverride = parsed.strengthOverride
         )
+        if (result == null) {
+            send(sender, "command.core-2x2x2-not-found", NamedTextColor.RED)
+            return true
+        }
+        val core = result.core
 
         send(
             sender,
@@ -381,12 +436,19 @@ class MagnetPlugin : JavaPlugin() {
             NamedTextColor.GREEN,
             "id" to core.id,
             "world" to core.worldName,
-            "x" to core.x.toString(),
-            "y" to core.y.toString(),
-            "z" to core.z.toString(),
+            "x" to formatDouble(core.centerX),
+            "y" to formatDouble(core.centerY),
+            "z" to formatDouble(core.centerZ),
             "radius" to formatDouble(core.radius),
-            "strength" to formatDouble(core.strength)
+            "strength" to formatDouble(core.strength),
+            "profile" to core.coreProfile,
+            "calculatedRadius" to formatDouble(core.calculatedRadius),
+            "calculatedStrength" to formatDouble(core.calculatedStrength),
+            "override" to core.manualOverride.toString(),
+            "critical" to core.criticalFrameBlocks.size.toString(),
+            "optional" to core.optionalFrameBlocks.size.toString()
         )
+        sendFrameWarning(sender, result.frameWarning)
 
         return true
     }
@@ -421,15 +483,17 @@ class MagnetPlugin : JavaPlugin() {
             return null
         }
 
-        val radius = parseRadius(sender, args.getOrNull(firstNumberIndex + 3)) ?: return null
-        val strength = parseStrength(sender, args.getOrNull(firstNumberIndex + 4)) ?: return null
+        val radiusOverride = args.getOrNull(firstNumberIndex + 3)?.let {
+            parseRadius(sender, it) ?: return null
+        }
+        val strengthOverride = args.getOrNull(firstNumberIndex + 4)?.let {
+            parseStrength(sender, it) ?: return null
+        }
 
-        return ParsedCreateAt(worldName, x, y, z, radius, strength)
+        return ParsedCreateAt(worldName, x, y, z, radiusOverride, strengthOverride)
     }
 
-    private fun parseRadius(sender: CommandSender, raw: String?): Double? {
-        if (raw == null) return coreManager.defaultCoreRadius
-
+    private fun parseRadius(sender: CommandSender, raw: String): Double? {
         val requested = raw.toDoubleOrNull()
         if (requested == null || !java.lang.Double.isFinite(requested) || requested <= 0.0) {
             send(sender, "command.invalid-number", NamedTextColor.RED)
@@ -449,16 +513,24 @@ class MagnetPlugin : JavaPlugin() {
         return limited
     }
 
-    private fun parseStrength(sender: CommandSender, raw: String?): Double? {
-        if (raw == null) return coreManager.defaultCoreStrength
-
-        val strength = raw.toDoubleOrNull()
-        if (strength == null || !java.lang.Double.isFinite(strength) || strength <= 0.0) {
+    private fun parseStrength(sender: CommandSender, raw: String): Double? {
+        val requested = raw.toDoubleOrNull()
+        if (requested == null || !java.lang.Double.isFinite(requested) || requested <= 0.0) {
             send(sender, "command.invalid-number", NamedTextColor.RED)
             return null
         }
 
-        return strength
+        val limited = coreManager.limitStrength(requested)
+        if (limited != requested) {
+            send(
+                sender,
+                "command.core-strength-clamped",
+                NamedTextColor.YELLOW,
+                "strength" to formatDouble(limited)
+            )
+        }
+
+        return limited
     }
 
     private fun handleCoreRemove(sender: CommandSender, args: Array<out String>): Boolean {
@@ -477,6 +549,154 @@ class MagnetPlugin : JavaPlugin() {
         return true
     }
 
+    private fun handleCoreRescan(sender: CommandSender, args: Array<out String>): Boolean {
+        val id = args.getOrNull(2)?.lowercase(Locale.ROOT)
+        if (id == null) {
+            send(sender, "command.core-rescan-usage", NamedTextColor.YELLOW)
+            return true
+        }
+
+        val result = coreManager.rescanFrame(id)
+        if (result == null) {
+            send(sender, "command.core-not-found", NamedTextColor.RED, "id" to id)
+            return true
+        }
+
+        if (!result.success) {
+            send(
+                sender,
+                "command.core-frame-rescan-failed",
+                NamedTextColor.RED,
+                "id" to result.core.id,
+                "reason" to (result.message ?: "unknown")
+            )
+            return true
+        }
+
+        send(
+            sender,
+            "command.core-frame-rescanned",
+            NamedTextColor.GREEN,
+            "id" to result.core.id,
+            "critical" to result.criticalCount.toString(),
+            "optional" to result.optionalCount.toString()
+        )
+        sendFrameWarning(sender, result.message)
+        return true
+    }
+
+    private fun handleCoreRefresh(sender: CommandSender, args: Array<out String>): Boolean {
+        val id = args.getOrNull(2)?.lowercase(Locale.ROOT)
+        if (id == null) {
+            send(sender, "command.core-refresh-usage", NamedTextColor.YELLOW)
+            return true
+        }
+
+        val result = coreManager.refreshCore(id)
+        if (result == null) {
+            send(sender, "command.core-not-found", NamedTextColor.RED, "id" to id)
+            return true
+        }
+
+        if (!result.success) {
+            send(
+                sender,
+                "command.core-refresh-failed",
+                NamedTextColor.RED,
+                "id" to result.core.id,
+                "reason" to (result.message ?: "unknown")
+            )
+            return true
+        }
+
+        send(
+            sender,
+            "command.core-refreshed",
+            NamedTextColor.GREEN,
+            "id" to result.core.id,
+            "profile" to result.core.coreProfile,
+            "radius" to formatDouble(result.core.radius),
+            "strength" to formatDouble(result.core.strength)
+        )
+        return true
+    }
+
+    private fun handleCoreOverride(sender: CommandSender, args: Array<out String>): Boolean {
+        val id = args.getOrNull(2)?.lowercase(Locale.ROOT)
+        val enabled = args.getOrNull(3)?.toBooleanStrictOrNull()
+        if (id == null || enabled == null) {
+            send(sender, "command.core-override-usage", NamedTextColor.YELLOW)
+            return true
+        }
+
+        val result = coreManager.setCoreOverride(id, enabled)
+        if (result == null) {
+            send(sender, "command.core-not-found", NamedTextColor.RED, "id" to id)
+            return true
+        }
+        if (!result.success) {
+            send(
+                sender,
+                "command.core-refresh-failed",
+                NamedTextColor.RED,
+                "id" to result.core.id,
+                "reason" to (result.message ?: "unknown")
+            )
+            return true
+        }
+
+        send(
+            sender,
+            "command.core-override-updated",
+            NamedTextColor.GREEN,
+            "id" to result.core.id,
+            "override" to result.core.manualOverride.toString(),
+            "radius" to formatDouble(result.core.radius),
+            "strength" to formatDouble(result.core.strength)
+        )
+        return true
+    }
+
+    private fun handleCoreSet(sender: CommandSender, args: Array<out String>): Boolean {
+        val id = args.getOrNull(2)?.lowercase(Locale.ROOT)
+        val field = args.getOrNull(3)?.lowercase(Locale.ROOT)
+        val value = args.getOrNull(4)
+        if (id == null || field == null || value == null) {
+            send(sender, "command.core-set-usage", NamedTextColor.YELLOW)
+            return true
+        }
+
+        val result = when (field) {
+            "radius" -> {
+                val radius = parseRadius(sender, value) ?: return true
+                coreManager.setCoreRadius(id, radius)
+            }
+            "strength" -> {
+                val strength = parseStrength(sender, value) ?: return true
+                coreManager.setCoreStrength(id, strength)
+            }
+            else -> {
+                send(sender, "command.core-set-usage", NamedTextColor.YELLOW)
+                return true
+            }
+        }
+
+        if (result == null) {
+            send(sender, "command.core-not-found", NamedTextColor.RED, "id" to id)
+            return true
+        }
+
+        send(
+            sender,
+            "command.core-set-updated",
+            NamedTextColor.GREEN,
+            "id" to result.core.id,
+            "radius" to formatDouble(result.core.radius),
+            "strength" to formatDouble(result.core.strength)
+        )
+        return true
+    }
+
     private fun handleCoreList(sender: CommandSender): Boolean {
         val cores = coreManager.all()
         if (cores.isEmpty()) {
@@ -486,11 +706,25 @@ class MagnetPlugin : JavaPlugin() {
 
         send(sender, "command.core-list-header", NamedTextColor.AQUA)
         for (core in cores) {
+            val activity = if (core.active && !core.damaged) "active" else "inactive"
+            val frameState = if (core.damaged) {
+                "damaged"
+            } else if (core.criticalFrameBlocks.isNotEmpty()) {
+                "ok"
+            } else {
+                "missing"
+            }
+            val line = if (core.damaged) {
+                "${core.id} | $activity | damaged | reason: ${core.damageReason ?: "unknown"}"
+            } else {
+                "${core.id} | $activity | profile: ${core.coreProfile} | " +
+                    "radius: ${formatDouble(core.radius)} | strength: ${formatDouble(core.strength)} | " +
+                    "calculated: ${formatDouble(core.calculatedRadius)}/${formatDouble(core.calculatedStrength)} | " +
+                    "override: ${core.manualOverride} | frame: $frameState | " +
+                    "critical: ${core.criticalFrameBlocks.size} | optional: ${core.optionalFrameBlocks.size}"
+            }
             sender.sendMessage(
-                Component.text(
-                    "- ${core.id}: ${core.worldName} ${core.x} ${core.y} ${core.z}, " +
-                        "radius=${formatDouble(core.radius)}, strength=${formatDouble(core.strength)}"
-                ).color(NamedTextColor.GRAY)
+                Component.text(line).color(if (core.damaged) NamedTextColor.RED else NamedTextColor.GRAY)
             )
         }
 
@@ -513,16 +747,48 @@ class MagnetPlugin : JavaPlugin() {
         val core = inspection.core
         sender.sendMessage(
             Component.text(
-                "Core ${core.id}: ${core.worldName} ${core.x} ${core.y} ${core.z}, " +
-                    "radius=${formatDouble(core.radius)}, strength=${formatDouble(core.strength)}"
+                "Core ${core.id}:"
             ).color(NamedTextColor.AQUA)
         )
         sender.sendMessage(
             Component.text(
-                "World loaded=${inspection.worldLoaded}, chunk loaded=${inspection.chunkLoaded}, " +
-                    "block=${inspection.blockType?.name ?: "UNKNOWN"}, copper=${inspection.copperCoreBlock}"
-            ).color(if (inspection.copperCoreBlock) NamedTextColor.GREEN else NamedTextColor.RED)
+                "Status: ${if (core.active && !core.damaged) "active" else "inactive"}, damaged=${core.damaged}"
+            ).color(if (core.active && !core.damaged) NamedTextColor.GREEN else NamedTextColor.RED)
         )
+        sender.sendMessage(
+            Component.text(
+                "World: ${core.worldName}, center: " +
+                    "${formatDouble(core.centerX)} ${formatDouble(core.centerY)} ${formatDouble(core.centerZ)}"
+            ).color(NamedTextColor.GRAY)
+        )
+        sender.sendMessage(
+            Component.text(
+                "Profile: ${core.coreProfile}, radius: ${formatDouble(core.radius)}, " +
+                    "strength: ${formatDouble(core.strength)}, calculated: " +
+                    "${formatDouble(core.calculatedRadius)} / ${formatDouble(core.calculatedStrength)}, " +
+                    "override: ${core.manualOverride}, core-size: ${core.coreSize}"
+            ).color(NamedTextColor.GRAY)
+        )
+        sender.sendMessage(
+            Component.text(
+                "World loaded=${inspection.worldLoaded}, chunk loaded=${inspection.chunkLoaded}, " +
+                    "core complete=${inspection.coreComplete}"
+            ).color(if (inspection.coreComplete) NamedTextColor.GREEN else NamedTextColor.RED)
+        )
+        sender.sendMessage(
+            Component.text(
+                "Frame complete=${inspection.frameComplete}, critical=${core.criticalFrameBlocks.size}, " +
+                    "optional=${core.optionalFrameBlocks.size}, reason=${inspection.frameReason ?: core.damageReason ?: "none"}"
+            ).color(if (inspection.frameComplete && !core.damaged) NamedTextColor.GREEN else NamedTextColor.RED)
+        )
+        sender.sendMessage(Component.text("Core blocks:").color(NamedTextColor.AQUA))
+        for ((index, position) in core.coreBlocks.withIndex()) {
+            val material = inspection.blockTypes.getOrNull(index)?.name ?: "UNKNOWN"
+            sender.sendMessage(
+                Component.text("- ${core.worldName} ${position.x} ${position.y} ${position.z} $material")
+                    .color(if (material == "UNKNOWN") NamedTextColor.RED else NamedTextColor.GRAY)
+            )
+        }
         sender.sendMessage(
             Component.text(
                 "Nearby dropped items=${inspection.nearbyItems}, magnetic items=${inspection.magneticItems}"
@@ -530,6 +796,121 @@ class MagnetPlugin : JavaPlugin() {
         )
 
         return true
+    }
+
+    private fun handleProfileList(sender: CommandSender): Boolean {
+        val profiles = coreManager.coreMaterialProfiles()
+        if (profiles.isEmpty()) {
+            send(sender, "command.profile-list-empty", NamedTextColor.GRAY)
+            return true
+        }
+
+        send(sender, "command.profile-list-header", NamedTextColor.AQUA)
+        for (profile in profiles) {
+            sender.sendMessage(
+                Component.text(
+                    "${profile.material.name} | profile: ${profile.profile} | " +
+                        "radius: ${formatDouble(profile.baseRadius)} | " +
+                        "strength: ${formatDouble(profile.baseStrength)} | priority: ${profile.priority}"
+                ).color(NamedTextColor.GRAY)
+            )
+        }
+        return true
+    }
+
+    private fun handleProfileInfo(sender: CommandSender, args: Array<out String>): Boolean {
+        val materialName = args.getOrNull(2)
+        if (materialName == null) {
+            send(sender, "command.profile-info-usage", NamedTextColor.YELLOW)
+            return true
+        }
+
+        val profile = coreManager.coreMaterialProfile(materialName)
+        if (profile == null) {
+            send(sender, "command.profile-not-found", NamedTextColor.RED, "material" to materialName.uppercase(Locale.ROOT))
+            return true
+        }
+
+        sender.sendMessage(
+            Component.text(
+                "${profile.material.name}: profile=${profile.profile}, " +
+                    "radius=${formatDouble(profile.baseRadius)}, " +
+                    "strength=${formatDouble(profile.baseStrength)}, priority=${profile.priority}"
+            ).color(NamedTextColor.AQUA)
+        )
+        return true
+    }
+
+    private fun handleProfileSet(sender: CommandSender, args: Array<out String>): Boolean {
+        val materialName = args.getOrNull(2)
+        val field = args.getOrNull(3)?.lowercase(Locale.ROOT)
+        val value = args.getOrNull(4)
+        if (materialName == null || field == null || value == null) {
+            send(sender, "command.profile-set-usage", NamedTextColor.YELLOW)
+            return true
+        }
+
+        val profile = when (field) {
+            "radius" -> {
+                val radius = parseRadius(sender, value) ?: return true
+                coreManager.setMaterialProfileRadius(materialName, radius)
+            }
+            "strength" -> {
+                val strength = parseStrength(sender, value) ?: return true
+                coreManager.setMaterialProfileStrength(materialName, strength)
+            }
+            "priority" -> {
+                val priority = value.toIntOrNull()
+                if (priority == null) {
+                    send(sender, "command.invalid-number", NamedTextColor.RED)
+                    return true
+                }
+                coreManager.setMaterialProfilePriority(materialName, priority)
+            }
+            else -> {
+                send(sender, "command.profile-set-usage", NamedTextColor.YELLOW)
+                return true
+            }
+        }
+
+        if (profile == null) {
+            send(sender, "command.profile-not-found", NamedTextColor.RED, "material" to materialName.uppercase(Locale.ROOT))
+            return true
+        }
+
+        send(
+            sender,
+            "command.profile-updated",
+            NamedTextColor.GREEN,
+            "material" to profile.material.name,
+            "profile" to profile.profile,
+            "radius" to formatDouble(profile.baseRadius),
+            "strength" to formatDouble(profile.baseStrength),
+            "priority" to profile.priority.toString()
+        )
+        return true
+    }
+
+    private fun handleProfileReload(sender: CommandSender): Boolean {
+        val refreshed = coreManager.reloadProfiles()
+        send(
+            sender,
+            "command.profile-reloaded",
+            NamedTextColor.GREEN,
+            "count" to refreshed.toString()
+        )
+        return true
+    }
+
+    private fun sendFrameWarning(sender: CommandSender, warning: String?) {
+        if (warning == null) return
+
+        send(
+            sender,
+            "command.core-frame-warning",
+            NamedTextColor.YELLOW,
+            "warning" to warning
+        )
     }
 
     private fun handleCoreReload(sender: CommandSender): Boolean {
@@ -598,7 +979,7 @@ class MagnetPlugin : JavaPlugin() {
         val x: Int,
         val y: Int,
         val z: Int,
-        val radius: Double,
-        val strength: Double
+        val radiusOverride: Double?,
+        val strengthOverride: Double?
     )
 }

@@ -4,7 +4,7 @@ version: ${version}
 main: ru.garde.magnet.MagnetPlugin
 bootstrapper: ru.garde.magnet.MagnetPluginBootsTrap
 api-version: '1.21'
-author: Garde1
+authors: [Garde1]
 
 commands:
   magnet:

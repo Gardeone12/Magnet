@@ -11,6 +11,6 @@ internal class MagnetPluginBootsTrap : PluginBootstrap {
     }
 
     override fun createPlugin(context: PluginProviderContext): JavaPlugin {
-        return MagnetPlugin()
+        return MagnetPlugin
     }
 }
