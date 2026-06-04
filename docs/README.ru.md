@@ -30,6 +30,8 @@ Magnet — Paper-плагин для Minecraft, который добавляе�
 | --- | --- |
 | `/magnet` | Показать помощь |
 | `/magnet give` | Выдать игроку переносной магнит |
+| `/magnet reload` | Перезагрузить конфиг плагина и магнитные ядра |
+| `/magnet debug item` | Показать диагностику модели предмета в основной руке |
 | `/magnet core create <id> [radius] [strength]` | Создать ядро по структуре 2x2x2, на которую смотрит игрок |
 | `/magnet core createat <id> <x> <y> <z> [radius] [strength]` | Создать ядро по координатам в текущем мире игрока |
 | `/magnet core createat <id> <world> <x> <y> <z> [radius] [strength]` | Создать ядро по координатам из консоли или в другом мире |
@@ -50,9 +52,69 @@ Magnet — Paper-плагин для Minecraft, который добавляе�
 
 ## Переносной Магнит
 
-Переносной магнит — это аметистовый осколок, помеченный через `PersistentDataContainer`, поэтому плагин отличает его от обычного предмета.
+Переносной магнит — это аметистовый осколок, помеченный через `PersistentDataContainer`, поэтому плагин отличает его от обычного предмета. На Paper/Leaf `1.21.11` основной способ отображения — ключ модели `magnit:portable_magnet`. Также плагин записывает custom model data `9001001` как fallback для паков, где ещё есть override аметистового осколка.
 
 Каждые 2 тика плагин проверяет игроков онлайн. Если игрок держит переносной магнит, поддерживаемые выпавшие предметы в радиусе 7 блоков притягиваются к игроку.
+
+## Настройка Ресурспака
+
+Пример ресурспака лежит в `docs/resource-pack` и использует тот же namespace, что и плагин: `magnit`. Пак с путями `assets/magnet/...` не совпадёт с `magnit:portable_magnet`, из-за чего предмет может отображаться как missing texture.
+
+Для Minecraft `1.21.11` в ресурспаке должны быть эти файлы:
+
+```text
+pack.mcmeta
+assets/magnit/items/portable_magnet.json
+assets/magnit/models/item/portable_magnet.json
+assets/magnit/textures/item/portable_magnet.png
+assets/minecraft/models/item/amethyst_shard.json
+```
+
+`assets/magnit/items/portable_magnet.json`:
+
+```json
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "magnit:item/portable_magnet"
+  }
+}
+```
+
+`assets/magnit/models/item/portable_magnet.json`:
+
+```json
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "magnit:item/portable_magnet"
+  }
+}
+```
+
+Положи текстуру в `assets/magnit/textures/item/portable_magnet.png`. Новые магниты получают эту модель сразу; старые магниты обновятся, когда игрок возьмёт их в руку.
+
+В `server.properties` параметр `resource-pack` должен быть прямой ссылкой на итоговый `.zip`. `resource-pack-prompt` должен быть JSON text component. Обычный текст вроде `Для отображения портативного магнита нужен ресурспак Magnet.` вызывает `MalformedJsonException` на Leaf/Paper.
+
+Пример с русским prompt:
+
+```properties
+resource-pack=PASTE_DIRECT_DOWNLOAD_LINK_HERE
+resource-pack-id=7bb7e1e4-c4e6-42b4-9c8e-8f1e9c8a6f02
+resource-pack-prompt={"text":"Для отображения портативного магнита нужен ресурспак Magnet.","color":"aqua"}
+resource-pack-sha1=f19f038ec8b744579cc692e5b7a9e41d6df0e8fb
+require-resource-pack=false
+```
+
+Английский вариант prompt:
+
+```properties
+resource-pack-prompt={"text":"This server uses a resource pack to display the Portable Magnet texture.","color":"aqua"}
+```
+
+Если пересобираешь zip ресурспака, обнови `resource-pack-sha1` на SHA-1 именно этого zip-файла.
+
+Команда `/magnet debug item` показывает base material, маркер `PersistentDataContainer`, item model key, custom model data, ожидаемый model key и версию плагина.
 
 С полной силой притягиваются:
 
@@ -122,13 +184,13 @@ gradle build
 Готовый `.jar` появится в папке:
 
 ```text
-build/libs/Magnit-0.1.1.jar
+build/libs/Magnit-0.1.2.jar
 ```
 
 ## Установка
 
 1. Соберите плагин.
-2. Скопируйте `build/libs/Magnit-0.1.1.jar` в папку `plugins` Paper-сервера.
+2. Скопируйте `build/libs/Magnit-0.1.2.jar` в папку `plugins` Paper-сервера.
 3. Запустите или перезапустите сервер.
 4. В игре выполните `/magnet give`.
 5. Для стационарного магнита постройте структуру 2x2x2 и выполните `/magnet core create <id>`.
@@ -167,3 +229,11 @@ src/main/resources/
 schematic/
   Magnet.litematic
 ```
+
+## Лицензия
+
+Проект распространяется под лицензией GNU General Public License v3.0 only.
+
+Copyright (C) 2026 Garde1 / Gardeone12.
+
+Подробности см. в файле [LICENSE](../LICENSE).

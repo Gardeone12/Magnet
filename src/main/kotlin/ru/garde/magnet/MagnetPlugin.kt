@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Garde1 / Gardeone12
+
 package ru.garde.magnet
 
 import io.papermc.paper.command.brigadier.BasicCommand
@@ -14,13 +17,24 @@ import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Item
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
+import org.bukkit.inventory.meta.ItemMeta
+import org.bukkit.inventory.meta.components.CustomModelDataComponent
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.java.JavaPlugin
 import java.util.Locale
 
 object MagnetPlugin : JavaPlugin() {
     private const val DEFAULT_LANGUAGE = "en"
+    private const val PORTABLE_MAGNET_CUSTOM_MODEL_DATA = 9001001
+    private const val PORTABLE_MAGNET_MODEL_NAMESPACE = "magnit"
+    private const val PORTABLE_MAGNET_MODEL_PATH = "portable_magnet"
+    private const val EXPECTED_PORTABLE_MAGNET_MODEL_KEY = "magnit:portable_magnet"
+    private const val RESOURCE_PACK_CONFIG_SECTION = "resource-pack"
     private val coreIdPattern = Regex("[a-z0-9_-]{1,32}")
+    private val portableMagnetItemModel = NamespacedKey(
+        PORTABLE_MAGNET_MODEL_NAMESPACE,
+        PORTABLE_MAGNET_MODEL_PATH
+    )
 
     private lateinit var magnetKey: NamespacedKey
     private lateinit var coreManager: MagnetCoreManager
@@ -118,6 +132,7 @@ object MagnetPlugin : JavaPlugin() {
         config.options().copyDefaults(true)
         saveConfig()
         loadMessages()
+        validateResourcePackConfiguration()
 
         coreManager = MagnetCoreManager(this, ::getMagneticMultiplier)
         coreManager.load()
@@ -209,10 +224,17 @@ object MagnetPlugin : JavaPlugin() {
 
         val meta = item.itemMeta ?: return false
 
-        return meta.persistentDataContainer.has(
+        val isMagnet = meta.persistentDataContainer.has(
             magnetKey,
             PersistentDataType.BYTE
         )
+
+        if (isMagnet && !hasPortableMagnetVisuals(meta)) {
+            applyPortableMagnetVisuals(meta)
+            item.itemMeta = meta
+        }
+
+        return isMagnet
     }
 
     private fun createMagnet(language: String): ItemStack {
@@ -239,8 +261,23 @@ object MagnetPlugin : JavaPlugin() {
             1
         )
 
+        applyPortableMagnetVisuals(meta)
+
         item.itemMeta = meta
         return item
+    }
+
+    private fun hasPortableMagnetVisuals(meta: ItemMeta): Boolean {
+        return meta.hasItemModel() && meta.itemModel == portableMagnetItemModel
+    }
+
+    private fun applyPortableMagnetVisuals(meta: ItemMeta) {
+        meta.setItemModel(portableMagnetItemModel)
+
+        val customModelData = meta.customModelDataComponent
+        customModelData.setFloats(listOf(PORTABLE_MAGNET_CUSTOM_MODEL_DATA.toFloat()))
+        customModelData.setStrings(listOf(portableMagnetItemModel.asString()))
+        meta.setCustomModelDataComponent(customModelData)
     }
 
     override fun onCommand(
@@ -264,6 +301,8 @@ object MagnetPlugin : JavaPlugin() {
 
         return when (args[0].lowercase(Locale.ROOT)) {
             "give" -> handleGive(sender)
+            "reload" -> handleReload(sender)
+            "debug" -> handleDebug(sender, args)
             "core" -> handleCore(sender, args)
             "profile" -> handleProfile(sender, args)
             else -> {
@@ -272,6 +311,14 @@ object MagnetPlugin : JavaPlugin() {
                 true
             }
         }
+    }
+
+    private fun handleReload(sender: CommandSender): Boolean {
+        loadMessages()
+        coreManager.reload()
+        validateResourcePackConfiguration()
+        send(sender, "command.reloaded", NamedTextColor.GREEN)
+        return true
     }
 
     private fun handleGive(sender: CommandSender): Boolean {
@@ -318,6 +365,54 @@ object MagnetPlugin : JavaPlugin() {
                 true
             }
         }
+    }
+
+    private fun handleDebug(sender: CommandSender, args: Array<out String>): Boolean {
+        return when (args.getOrNull(1)?.lowercase(Locale.ROOT)) {
+            "item" -> handleDebugItem(sender)
+            else -> {
+                send(sender, "command.debug-usage", NamedTextColor.YELLOW)
+                true
+            }
+        }
+    }
+
+    private fun handleDebugItem(sender: CommandSender): Boolean {
+        if (sender !is Player) {
+            send(sender, "command.player-only", NamedTextColor.RED)
+            return true
+        }
+
+        val item = sender.inventory.itemInMainHand
+        val meta = item.itemMeta
+        val hasMarker = meta?.persistentDataContainer?.has(
+            magnetKey,
+            PersistentDataType.BYTE
+        ) == true
+        val isPortableMagnet = item.type == Material.AMETHYST_SHARD && hasMarker
+        val itemModelKey = if (meta?.hasItemModel() == true) {
+            meta.itemModel?.asString() ?: "none"
+        } else {
+            "none"
+        }
+        val customModelData = if (meta?.hasCustomModelDataComponent() == true) {
+            formatCustomModelData(meta.customModelDataComponent)
+        } else {
+            "none"
+        }
+        val legacyCustomModelData = meta?.let { legacyCustomModelData(it)?.toString() } ?: "none"
+
+        sender.sendMessage(Component.text("Portable Magnet item debug").color(NamedTextColor.AQUA))
+        sender.sendMessage(Component.text("Is portable magnet: $isPortableMagnet").color(debugColor(isPortableMagnet)))
+        sender.sendMessage(Component.text("Base material: ${item.type.name}").color(NamedTextColor.GRAY))
+        sender.sendMessage(Component.text("PersistentDataContainer marker: $hasMarker").color(debugColor(hasMarker)))
+        sender.sendMessage(Component.text("Item model key: $itemModelKey").color(debugColor(itemModelKey == EXPECTED_PORTABLE_MAGNET_MODEL_KEY)))
+        sender.sendMessage(Component.text("Expected model key: $EXPECTED_PORTABLE_MAGNET_MODEL_KEY").color(NamedTextColor.GRAY))
+        sender.sendMessage(Component.text("Custom model data component: $customModelData").color(NamedTextColor.GRAY))
+        sender.sendMessage(Component.text("Legacy custom model data: $legacyCustomModelData").color(NamedTextColor.GRAY))
+        sender.sendMessage(Component.text("Plugin version: ${pluginMeta.version}").color(NamedTextColor.GRAY))
+
+        return true
     }
 
     private fun handleCoreCreate(sender: CommandSender, args: Array<out String>): Boolean {
@@ -923,6 +1018,96 @@ object MagnetPlugin : JavaPlugin() {
         for (line in messageList(languageFor(sender), "command.help")) {
             sender.sendMessage(Component.text(line).color(NamedTextColor.GRAY))
         }
+    }
+
+    private fun validateResourcePackConfiguration() {
+        if (config.contains(RESOURCE_PACK_CONFIG_SECTION) &&
+            config.getConfigurationSection(RESOURCE_PACK_CONFIG_SECTION) == null
+        ) {
+            logger.warning("resource-pack must be a configuration section.")
+            return
+        }
+
+        val section = config.getConfigurationSection(RESOURCE_PACK_CONFIG_SECTION) ?: return
+        val configuredModelKey = section.getString("model-key", EXPECTED_PORTABLE_MAGNET_MODEL_KEY)
+            ?.trim()
+            .orEmpty()
+
+        if (configuredModelKey.isBlank()) {
+            logger.warning(
+                "resource-pack.model-key is empty; expected $EXPECTED_PORTABLE_MAGNET_MODEL_KEY."
+            )
+        } else if (configuredModelKey != EXPECTED_PORTABLE_MAGNET_MODEL_KEY) {
+            logger.warning(
+                "resource-pack.model-key is '$configuredModelKey', but Portable Magnet uses " +
+                    "$EXPECTED_PORTABLE_MAGNET_MODEL_KEY. A namespace mismatch can cause missing texture."
+            )
+        }
+
+        if (!section.getBoolean("enabled", false)) return
+
+        val mode = section.getString("mode", "external")
+            ?.trim()
+            ?.lowercase(Locale.ROOT)
+            .orEmpty()
+
+        when (mode) {
+            "external" -> {
+                val url = section.getString("url")
+                    ?.trim()
+                    .orEmpty()
+                if (url.isBlank()) {
+                    logger.warning("resource-pack is enabled in config, but resource-pack.url is empty.")
+                }
+            }
+            "builtin", "built-in", "local" -> {
+                val fileName = section.getString("file")
+                    ?.trim()
+                    .orEmpty()
+                if (fileName.isBlank()) {
+                    logger.warning("resource-pack mode '$mode' is enabled, but resource-pack.file is empty.")
+                    return
+                }
+
+                val file = dataFolder.resolve(fileName)
+                if (!file.isFile) {
+                    logger.warning(
+                        "resource-pack mode '$mode' is enabled, but file '$fileName' was not found in " +
+                            dataFolder.absolutePath + "."
+                    )
+                }
+            }
+            else -> {
+                logger.warning("Unknown resource-pack.mode '$mode'. Use external or builtin.")
+            }
+        }
+    }
+
+    private fun formatCustomModelData(component: CustomModelDataComponent): String {
+        val parts = mutableListOf<String>()
+        if (component.floats.isNotEmpty()) {
+            parts += "floats=${component.floats.joinToString()}"
+        }
+        if (component.strings.isNotEmpty()) {
+            parts += "strings=${component.strings.joinToString()}"
+        }
+        if (component.flags.isNotEmpty()) {
+            parts += "flags=${component.flags.joinToString()}"
+        }
+        if (component.colors.isNotEmpty()) {
+            parts += "colors=${component.colors.joinToString()}"
+        }
+
+        return parts.joinToString("; ").ifBlank { "empty" }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun legacyCustomModelData(meta: ItemMeta): Int? {
+        return if (meta.hasCustomModelData()) meta.customModelData else null
+    }
+
+    private fun debugColor(ok: Boolean): NamedTextColor {
+        return if (ok) NamedTextColor.GREEN else NamedTextColor.RED
     }
 
     private fun languageFor(sender: CommandSender): String {
