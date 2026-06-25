@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Garde1 / Gardeone12
 
-package ru.garde.magnet
+package ru.garde.magnet.core
 
-import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.format.NamedTextColor
+import ru.garde.magnet.compat.LegacyComponent as Component
+import ru.garde.magnet.compat.sendMessage
+import ru.garde.magnet.compat.NamedTextColor
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener

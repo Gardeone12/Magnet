@@ -26,3 +26,9 @@ bin/
 build/
 .gradle/
 out/
+
+# Build/output
+build/
+.gradle/
+run/
+*.log

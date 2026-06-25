@@ -2,7 +2,7 @@
 
 Язык: [English](../README.md) | Русский
 
-Magnet — Paper-плагин для Minecraft, который добавляет переносной магнит и стационарные магнитные ядра. Переносной магнит притягивает выпавшие металлические предметы, пока игрок держит его в руке. Стационарные ядра — это структуры 2x2x2, которые притягивают предметы к своему центру.
+Magnet — Paper/Spigot-плагин для Minecraft, который добавляет переносной магнит и стационарные магнитные ядра. Переносной магнит притягивает выпавшие металлические предметы, пока игрок держит его в руке. Стационарные ядра — это структуры 2x2x2, которые притягивают предметы к своему центру.
 
 ## Возможности
 
@@ -20,9 +20,39 @@ Magnet — Paper-плагин для Minecraft, который добавляе�
 
 ## Требования
 
-- Minecraft / Paper: `1.21.11`
-- Java: `21`
-- Kotlin JVM: `2.4.0-RC`
+- Поддерживаемый диапазон Minecraft: `1.16.5 - 1.21.x`
+- Bytecode плагина: Java 8
+- JDK для сборки: Java 21
+- Compile API: `org.spigotmc:spigot-api:1.16.5-R0.1-SNAPSHOT`
+- Gradle Wrapper: 9.4.1
+
+Для запуска используй Java, которую требует сам сервер. Современный Paper 1.20.5+ требует Java 21, Paper 1.18-1.20.4 обычно использует Java 17, а старым версиям нужен соответствующий legacy runtime.
+
+## Совместимость
+
+Плагин собирается в один universal jar:
+
+`build/libs/Magnet-Universal-1.16.5-1.21.x.jar`
+
+Общий код компилируется против Spigot API 1.16.5. Новые item-model API определяются через reflection, сообщения отправляются legacy-строками Bukkit, материалы разрешаются по имени с fallback, а команда объявлена в обычном `plugin.yml`.
+
+В этом проекте 25 июня 2026 года выполнены runtime smoke-тесты:
+
+- Paper 1.16.5 build 794
+- Paper 1.21.11 build 132
+- `/magnet`, `/magnet reload`, безопасная обработка player-only команд из консоли и `/magnet core list`
+- чистое выключение плагина на обеих версиях
+
+Код рассчитан на Paper/Spigot 1.16.5-1.21.x. Промежуточные версии, Spigot и Leaf перед production-развёртыванием нужно отдельно проверить на целевом сервере.
+
+Поведение совместимости:
+
+- Переносной магнит определяется через `PersistentDataContainer`, доступный в 1.16.5.
+- На Minecraft 1.17+ используется `AMETHYST_SHARD`, на 1.16.5 — fallback `COMPASS`.
+- Современные серверы используют item model/custom model data component API, если они доступны.
+- Старые серверы используют integer custom model data `9001001`.
+- Материалы, отсутствующие в текущей версии Minecraft, безопасно пропускаются.
+- Версия ниже 1.16.5 отклоняется с понятной ошибкой, если сервер доходит до загрузки main-класса плагина.
 
 ## Команды
 
@@ -48,11 +78,11 @@ Magnet — Paper-плагин для Minecraft, который добавляе�
 | `/magnet profile set <material> <radius\|strength\|priority> <value>` | Изменить профиль материала и пересчитать подходящие ядра |
 | `/magnet profile reload` | Перезагрузить профили материалов из конфига |
 
-Для команды сейчас не настроено отдельное permission-требование.
+Все команды используют permission `magnet.use`. По умолчанию оно равно `true`, поэтому прежнее свободное использование не ломается; владелец сервера может отозвать его через permissions-плагин.
 
 ## Переносной Магнит
 
-Переносной магнит — это аметистовый осколок, помеченный через `PersistentDataContainer`, поэтому плагин отличает его от обычного предмета. На Paper/Leaf `1.21.11` основной способ отображения — ключ модели `magnit:portable_magnet`. Также плагин записывает custom model data `9001001` как fallback для паков, где ещё есть override аметистового осколка.
+Переносной магнит помечается через `PersistentDataContainer`. На Minecraft 1.17+ его базовый материал — `AMETHYST_SHARD`, а на 1.16.5 используется fallback `COMPASS`. Современные item-model API применяются при наличии, иначе записывается custom model data `9001001`.
 
 Каждые 2 тика плагин проверяет игроков онлайн. Если игрок держит переносной магнит, поддерживаемые выпавшие предметы в радиусе 7 блоков притягиваются к игроку.
 
@@ -60,7 +90,7 @@ Magnet — Paper-плагин для Minecraft, который добавляе�
 
 Пример ресурспака лежит в `docs/resource-pack` и использует тот же namespace, что и плагин: `magnit`. Пак с путями `assets/magnet/...` не совпадёт с `magnit:portable_magnet`, из-за чего предмет может отображаться как missing texture.
 
-Для Minecraft `1.21.11` в ресурспаке должны быть эти файлы:
+Для Minecraft `1.21.x` ресурспак с поддержкой и современного item model пути, и fallback через custom model data должен включать эти файлы:
 
 ```text
 pack.mcmeta
@@ -92,7 +122,7 @@ assets/minecraft/models/item/amethyst_shard.json
 }
 ```
 
-Положи текстуру в `assets/magnit/textures/item/portable_magnet.png`. Новые магниты получают эту модель сразу; старые магниты обновятся, когда игрок возьмёт их в руку.
+Положи текстуру в `assets/magnit/textures/item/portable_magnet.png`. Новые магниты получают эту модель сразу; старые магниты обновятся, когда игрок возьмёт их в руку. Для 1.16.5 добавь аналогичный override custom model data для `minecraft:compass`, потому что аметистового осколка в этой версии нет.
 
 В `server.properties` параметр `resource-pack` должен быть прямой ссылкой на итоговый `.zip`. `resource-pack-prompt` должен быть JSON text component. Обычный текст вроде `Для отображения портативного магнита нужен ресурспак Magnet.` вызывает `MalformedJsonException` на Leaf/Paper.
 
@@ -114,7 +144,7 @@ resource-pack-prompt={"text":"This server uses a resource pack to display the Po
 
 Если пересобираешь zip ресурспака, обнови `resource-pack-sha1` на SHA-1 именно этого zip-файла.
 
-Команда `/magnet debug item` показывает base material, маркер `PersistentDataContainer`, item model key, custom model data, ожидаемый model key и версию плагина.
+Команда `/magnet debug item` показывает base material, маркер `PersistentDataContainer`, item model key, custom model data, ожидаемый model key, лучший доступный visual path и версию плагина.
 
 С полной силой притягиваются:
 
@@ -169,58 +199,62 @@ ID ядра может содержать только строчные лати
 
 ## Сборка
 
-Если Gradle установлен в системе:
+Все артефакты собираются одной командой:
 
 ```powershell
-gradle build
+.\gradlew.bat clean build
 ```
 
-Если в проекте есть Gradle Wrapper:
-
-```powershell
-.\gradlew.bat build
-```
-
-Готовый `.jar` появится в папке:
+Результат — один shaded universal jar:
 
 ```text
-build/libs/Magnit-0.1.2.jar
+build/libs/Magnet-Universal-1.16.5-1.21.x.jar
 ```
+
+Kotlin runtime включён внутрь, bytecode соответствует Java 8 (class-file major version 52).
 
 ## Установка
 
-1. Соберите плагин.
-2. Скопируйте `build/libs/Magnit-0.1.2.jar` в папку `plugins` Paper-сервера.
-3. Запустите или перезапустите сервер.
-4. В игре выполните `/magnet give`.
-5. Для стационарного магнита постройте структуру 2x2x2 и выполните `/magnet core create <id>`.
+1. Выполни `.\gradlew.bat clean build`.
+2. Скопируй `build/libs/Magnet-Universal-1.16.5-1.21.x.jar` в папку `plugins` сервера.
+3. Запусти или перезапусти сервер.
+4. Проверь `/magnet` и `/magnet give`.
+5. Для стационарного магнита построй ядро 2x2x2 и выполни `/magnet core create <id>`.
 
 ## Локальный Тестовый Сервер
 
-Проект использует `xyz.jpenilla.run-paper`, поэтому локальный Paper-сервер можно запустить командой:
+Тестовые серверы используют отдельные папки внутри `run/`:
 
 ```powershell
-gradle runServer
+.\gradlew.bat runLegacyServer
+.\gradlew.bat runModernServer
 ```
 
-Если в проекте есть Gradle Wrapper:
+Можно выбрать конкретную версию Paper:
 
 ```powershell
-.\gradlew.bat runServer
+.\gradlew.bat runServer '-PrunMinecraftVersion=1.16.5'
+.\gradlew.bat runServer '-PrunMinecraftVersion=1.20.4'
+.\gradlew.bat runServer '-PrunMinecraftVersion=1.21.11'
 ```
+
+Legacy-задача включает Paper-флаг для локального smoke-теста на Java 21. Для production используй Java, рекомендованную для выбранной версии Minecraft/Paper.
 
 ## Структура Проекта
 
 ```text
 src/main/kotlin/ru/garde/magnet/
-  CoreMaterialRegistry.kt
-  MagnetCoreManager.kt
   MagnetPlugin.kt
-  MagnetPluginBootsTrap.kt
-  MagnetStructureBreakListener.kt
+  command/
+  compat/
+  config/
+  core/
+  message/
+  portable/
+  resourcepack/
 
 src/main/resources/
-  paper-plugin.yml
+  plugin.yml
   config.yml
   lang/
     en.yml
@@ -229,6 +263,15 @@ src/main/resources/
 schematic/
   Magnet.litematic
 ```
+
+Для contributor-oriented описания структуры см. [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Известные ограничения
+
+- Runtime smoke-тесты выполнены на Paper 1.16.5 и Paper 1.21.11; вся промежуточная матрица, Spigot и Leaf в этой рабочей среде не запускались.
+- В Minecraft 1.16.5 нет аметиста, меди, глубинного сланца и других поздних материалов. Такие записи конфига пропускаются; доступные профили железа, золота, редстоуна, обсидиана, незерита, магнетита, маяка и якоря возрождения продолжают работать.
+- Ресурспак для 1.16.5 должен использовать fallback-модель компаса; современный пак может использовать аметистовый осколок и item-model путь.
+- Выдачу предмета и физику притяжения всё ещё нужно проверить игроком в игре; консольный smoke-тест проверяет маршрутизацию команд и отсутствие крашей.
 
 ## Лицензия
 

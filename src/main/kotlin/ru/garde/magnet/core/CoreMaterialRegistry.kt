@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Garde1 / Gardeone12
 
-package ru.garde.magnet
+package ru.garde.magnet.core
 
 import org.bukkit.Material
 import org.bukkit.configuration.file.FileConfiguration
+import java.util.Locale
 import java.util.logging.Logger
 
 class CoreMaterialRegistry(
@@ -46,6 +47,7 @@ class CoreMaterialRegistry(
             DefaultCoreMaterialProfile("BEACON", "beacon", 36.0, 0.58, 52),
             DefaultCoreMaterialProfile("RESPAWN_ANCHOR", "unstable_anchor", 38.0, 0.62, 53)
         )
+        private val defaultMaterialNames = defaultProfiles.map { it.materialName }.toSet()
     }
 
     private val profilesByMaterial = linkedMapOf<Material, CoreMaterialProfile>()
@@ -55,12 +57,15 @@ class CoreMaterialRegistry(
 
         val section = config.getConfigurationSection(CONFIG_SECTION)
         profilesByMaterial.clear()
+        val invalidConfiguredMaterials = mutableListOf<String>()
 
         if (section != null) {
             for (materialName in section.getKeys(false)) {
                 val material = Material.matchMaterial(materialName)
                 if (material == null || !material.isBlock || material == Material.AIR) {
-                    logger.warning("Ignoring invalid core material '$materialName'.")
+                    if (materialName.uppercase(Locale.ROOT) !in defaultMaterialNames) {
+                        invalidConfiguredMaterials += materialName
+                    }
                     continue
                 }
 
@@ -93,15 +98,15 @@ class CoreMaterialRegistry(
             }
         }
 
+        if (invalidConfiguredMaterials.isNotEmpty()) {
+            logger.warning("Ignoring invalid core materials: ${invalidConfiguredMaterials.joinToString()}.")
+        }
+
         if (profilesByMaterial.isEmpty()) {
             logger.warning("No valid core-materials configured. Falling back to built-in core materials.")
             for (profile in defaultProfiles) {
                 val material = Material.matchMaterial(profile.materialName)
-                if (material == null || !material.isBlock || material == Material.AIR) {
-                    logger.warning("Ignoring unavailable built-in core material '${profile.materialName}'.")
-                    continue
-                }
-
+                if (material == null || !material.isBlock || material == Material.AIR) continue
                 profilesByMaterial[material] = profile.toProfile(material)
             }
         }
@@ -155,24 +160,13 @@ class CoreMaterialRegistry(
     private fun writeMissingDefaultProfiles(config: FileConfiguration) {
         for (profile in defaultProfiles) {
             val material = Material.matchMaterial(profile.materialName)
-            if (material == null || !material.isBlock || material == Material.AIR) {
-                logger.warning("Skipping default core material '${profile.materialName}' because it is not available in this server version.")
-                continue
-            }
+            if (material == null || !material.isBlock || material == Material.AIR) continue
 
             val path = "$CONFIG_SECTION.${profile.materialName}"
-            if (!config.contains("$path.profile")) {
-                config.set("$path.profile", profile.profile)
-            }
-            if (!config.contains("$path.base-radius")) {
-                config.set("$path.base-radius", profile.baseRadius)
-            }
-            if (!config.contains("$path.base-strength")) {
-                config.set("$path.base-strength", profile.baseStrength)
-            }
-            if (!config.contains("$path.priority")) {
-                config.set("$path.priority", profile.priority)
-            }
+            if (!config.contains("$path.profile")) config.set("$path.profile", profile.profile)
+            if (!config.contains("$path.base-radius")) config.set("$path.base-radius", profile.baseRadius)
+            if (!config.contains("$path.base-strength")) config.set("$path.base-strength", profile.baseStrength)
+            if (!config.contains("$path.priority")) config.set("$path.priority", profile.priority)
         }
     }
 

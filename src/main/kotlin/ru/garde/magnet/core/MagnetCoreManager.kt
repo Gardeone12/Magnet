@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Garde1 / Gardeone12
 
-package ru.garde.magnet
+package ru.garde.magnet.core
 
 import org.bukkit.Bukkit
 import org.bukkit.Location
@@ -14,6 +14,7 @@ import org.bukkit.entity.Item
 import org.bukkit.plugin.java.JavaPlugin
 import org.bukkit.scheduler.BukkitTask
 import java.io.File
+import java.util.Locale
 import kotlin.math.floor
 
 class MagnetCoreManager(
@@ -25,25 +26,16 @@ class MagnetCoreManager(
         private const val CORE_SIZE = "2x2x2"
         private const val MIN_FRAME_WARNING_BLOCKS = 8
 
-        val defaultFrameMaterials = setOf(
-            Material.STONE_BRICKS,
-            Material.CRACKED_STONE_BRICKS,
-            Material.CHISELED_STONE_BRICKS,
-            Material.POLISHED_ANDESITE,
-            Material.POLISHED_ANDESITE_STAIRS,
-            Material.POLISHED_ANDESITE_SLAB,
-            Material.DEEPSLATE_BRICKS,
-            Material.DEEPSLATE_TILES,
-            Material.POLISHED_DEEPSLATE,
-            Material.BLACK_CONCRETE,
-            Material.BLACKSTONE,
-            Material.POLISHED_BLACKSTONE,
-            Material.IRON_BLOCK,
-            Material.COPPER_BLOCK,
-            Material.CUT_COPPER,
-            Material.WAXED_CUT_COPPER,
-            Material.LIGHTNING_ROD
+        val defaultFrameMaterialNames = setOf(
+            "STONE_BRICKS", "CRACKED_STONE_BRICKS", "CHISELED_STONE_BRICKS",
+            "POLISHED_ANDESITE", "POLISHED_ANDESITE_STAIRS", "POLISHED_ANDESITE_SLAB",
+            "DEEPSLATE_BRICKS", "DEEPSLATE_TILES", "POLISHED_DEEPSLATE", "BLACK_CONCRETE",
+            "BLACKSTONE", "POLISHED_BLACKSTONE", "IRON_BLOCK", "COPPER_BLOCK", "CUT_COPPER",
+            "WAXED_CUT_COPPER", "LIGHTNING_ROD"
         )
+        val defaultFrameMaterials: Set<Material> = defaultFrameMaterialNames
+            .mapNotNull(Material::matchMaterial)
+            .toSet()
     }
 
     private val cores = linkedMapOf<String, MagnetCore>()
@@ -569,16 +561,22 @@ class MagnetCoreManager(
         if (configured.isEmpty()) return defaultFrameMaterials
 
         val materials = linkedSetOf<Material>()
+        val invalidConfiguredMaterials = mutableListOf<String>()
         for (name in configured) {
+            val normalizedName = name.trim().uppercase(Locale.ROOT)
             val material = Material.matchMaterial(name)
             if (material == null || !material.isBlock || material == Material.AIR) {
-                plugin.logger.warning("Ignoring invalid frame material '$name'.")
+                if (normalizedName !in defaultFrameMaterialNames) invalidConfiguredMaterials += name
                 continue
             }
-
             materials += material
         }
 
+        if (invalidConfiguredMaterials.isNotEmpty()) {
+            plugin.logger.warning(
+                "Ignoring invalid frame materials: ${invalidConfiguredMaterials.joinToString()}."
+            )
+        }
         return materials.ifEmpty { defaultFrameMaterials }
     }
 
